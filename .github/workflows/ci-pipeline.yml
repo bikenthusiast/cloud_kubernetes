@@ -1,0 +1,59 @@
+name: K8s End-to-End Testing Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  e2e-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Code auschecken
+      uses: actions/checkout@v4
+
+    - name: Docker Image für die App bauen
+      run: |
+        docker build -t meine-test-app:latest ./app
+
+    - name: Kubernetes (KinD) Cluster starten
+      uses: helm/kind-action@v1.8.0
+      with:
+        cluster_name: test-cluster
+
+    - name: Docker Image in das KinD-Cluster laden
+      run: |
+        kind load docker-image meine-test-app:latest --name test-cluster
+
+    - name: App in Kubernetes deployen
+      run: |
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
+
+    - name: Warten, bis die Pods bereit sind
+      run: |
+        kubectl rollout status deployment/test-app-deployment --timeout=90s
+
+    - name: Python für die Tests einrichten
+      uses: actions/setup-python@v5
+      with:
+        python-node-version: '3.11'
+
+    - name: Test-Abhängigkeiten installieren
+      run: |
+        cd tests
+        pip install -r requirements.txt
+
+    - name: Port-Forwarding & Tests ausführen
+      run: |
+        # Wir leiten den Service-Port im Hintergrund an den GitHub-Runner weiter
+        kubectl port-forward svc/test-app-service 8080:80 &
+        
+        # Kurz warten, bis die Weiterleitung steht
+        sleep 3
+        
+        # Tests starten und die URL des weitergeleiteten Ports übergeben
+        export APP_URL="http://localhost:8080"
+        pytest tests/test_api.py -v

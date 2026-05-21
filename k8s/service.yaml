@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-app-service
+spec:
+  selector:
+    app: test-app
+  ports:
+    - protocol: TCP
+      port: 80       # Port des Services im Cluster
+      targetPort: 8000 # Port der App im Container
+  type: ClusterIP
